@@ -105,13 +105,14 @@ def get_word2idx_idx2word(vocab):
     return word2idx, idx2word
 
 
-def embed_sequence(sequence, word2idx, glove_embeddings, elmo_embeddings):
+def embed_sequence(sequence, agg_words, word2idx, glove_embeddings, elmo_embeddings):
     """
     Assume that word2idx has 1 mapped to UNK
     Assume that word2idx maps well implicitly with glove_embeddings
     i.e. the idx for each word is the row number for its corresponding embedding
 
     :param sequence: a single string: a sentence with space
+    :pagram agg_words: a set of aggresive words: lower case
     :param word2idx: a dictionary: string --> int
     :param glove_embeddings: a nn.Embedding with padding idx 0
     :param elmo_embeddings: a h5py file
@@ -131,6 +132,21 @@ def embed_sequence(sequence, word2idx, glove_embeddings, elmo_embeddings):
     if elmo_embeddings != None:
         elmo_part = elmo_embeddings[sequence]
         assert (elmo_part.shape == (len(words), 1024))
+    
+    # 3. embed the sequence by suffix indicators i.e. wether it is a verb or not
+    indicated_sequence = [1 if x.lower() in agg_words else 0 for x in words]
+    suffix_part = suffix_embeddings(Variable(torch.LongTensor(indicated_sequence)))
+    
+    # concatenate three parts: glove+elmo+suffix along axis 1
+    # glove_part and suffix_part are Variables, so we need to use .data
+    # otherwise, throws weird ValueError: incorrect dimension, zero-dimension, etc..
+    if elmo_embeddings != None:
+        result = np.concatenate((glove_part.data, elmo_part), axis=1)
+        result = np.concatenate((result, suffix_part.data), axis=1)
+    else:
+        result = np.concatenate((glove_part.data, suffix_part.data), axis=1)
+    return result
+
 
     # concatenate three parts: glove+elmo along axis 1
     assert(glove_part.shape == (len(words), 300))
